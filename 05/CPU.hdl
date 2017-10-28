@@ -1,0 +1,153 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/05/CPU.hdl
+
+/**
+ * The Hack CPU (Central Processing unit), consisting of an ALU,
+ * two registers named A and D, and a program counter named PC.
+ * The CPU is designed to fetch and execute instructions written in 
+ * the Hack machine language. In particular, functions as follows:
+ * Executes the inputted instruction according to the Hack machine 
+ * language specification. The D and A in the language specification
+ * refer to CPU-resident registers, while M refers to the external
+ * memory location addressed by A, i.e. to Memory[A]. The inM input 
+ * holds the value of this location. If the current instruction needs 
+ * to write a value to M, the value is placed in outM, the address 
+ * of the target location is placed in the addressM output, and the 
+ * writeM control bit is asserted. (When writeM==0, any value may 
+ * appear in outM). The outM and writeM outputs are combinational: 
+ * they are affected instantaneously by the execution of the current 
+ * instruction. The addressM and pc outputs are clocked: although they 
+ * are affected by the execution of the current instruction, they commit 
+ * to their new values only in the next time step. If reset==1 then the 
+ * CPU jumps to address 0 (i.e. pc is set to 0 in next time step) rather 
+ * than to the address resulting from executing the current instruction. 
+ */
+
+CHIP CPU {
+
+    IN  inM[16],         // M value input  (M = contents of RAM[A])
+        instruction[16], // Instruction for execution
+        reset;           // Signals whether to re-start the current
+                         // program (reset==1) or continue executing
+                         // the current program (reset==0).
+
+    OUT outM[16],        // M value output
+        writeM,          // Write to M? 
+        addressM[15],    // Address in data memory (of M)
+        pc[15];          // address of next instruction
+
+    PARTS:
+
+
+    /////////////////
+    // HELPERS
+    ////////////////
+
+    Not(in=instruction[15], out=isAInstruction);
+    Or(a=instruction[15], b=false, out=isCInstruction); // for semantics purposes
+
+
+    /////////////////
+    // FRONT GATES
+    ////////////////
+
+    // A resiter
+
+    Mux16(a=ALUToA, b=instruction, sel=isAInstruction, out=AMuxGate);
+
+
+    /////////////////
+    // A REGISTER
+    ////////////////
+
+    // Control
+    Or(a=isAInstruction, b=instruction[5], out=AControl); // true if A instruction or (d1 == 1)
+
+    // Register 
+    ARegister(in=AMuxGate, load=AControl, out=AOut, out[0..14]=addressM);
+
+
+    /////////////////
+    // D REGISTER
+    ////////////////
+
+    // Control
+    And(a=instruction[4], b=isCInstruction, out=DControl);    
+
+    // Register 
+    DRegister(in=ALUToD, load=DControl, out=DOut); // loads if (d2 == 1)
+
+
+    /////////////////
+    // ALU
+    ////////////////
+
+    // y(A or M )control
+    Mux16(a=AOut, b=inM, sel=instruction[12], out=AorInMGate);
+    
+    ALU(x=DOut, y=AorInMGate, zx=instruction[11], nx=instruction[10], zy=instruction[9], ny=instruction[8], f=instruction[7], no=instruction[6], out=outM, out=ALUToD, out=ALUToA, zr=zr, ng=ng);
+
+    // ALU helpers
+
+    Not(in=ng, out=notNg);
+    Not(in=zr, out=notZr);
+    Not(in=instruction[0], out=noJ2);
+    Not(in=instruction[0], out=noJ3);
+
+
+    /////////////////
+    // writeM
+    ////////////////
+
+    And(a=instruction[3], b=instruction[15], out=writeM);
+
+
+    /////////////////
+    // PC
+    ////////////////
+
+    // Jump Gates (Control)
+
+    And(a=instruction[0], b=notNg, out=j3Temp); // notNg => ALU output is zero or greater then zero
+    // additional check ALU output != 0
+    And(a=j3Temp, b=notZr, out=j3Temp1);
+    
+    And(a=j3Temp1, b=instruction[0], out=j3Gate);
+
+    And(a=instruction[1], b=zr, out=j2Temp);
+    And(a=j2Temp, b=instruction[1], out=j2Gate);
+
+    And(a=instruction[2], b=ng, out=j1Temp);
+    And(a=j1Temp, b=instruction[2], out=j1Gate);
+
+    Or(a=j3Gate, b=j2Gate, out=PCControlTemp);
+    Or(a=PCControlTemp, b=j1Gate, out=PCControlTemp1);
+
+    And(a=PCControlTemp1, b=isCInstruction, out=PCControl);
+
+    // PC
+    PC(in=AOut, load=PCControl, inc=true, reset=reset, out[0..14]=pc);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+}
